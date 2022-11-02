@@ -14,13 +14,15 @@ import (
 // UserServer is the server that provides user services
 type UserServer struct {
 	Store UserStore
+	Cash *RedisClient
 	pb.UnimplementedUserServiceServer
 }
 
 // NewUserServer returns a new UserServer
-func NewUserServer(store UserStore) *UserServer {
+func NewUserServer(store UserStore, cash *RedisClient) *UserServer {
 	return &UserServer{
 		Store: store,
+		Cash: cash,
 	}
 }
 
@@ -104,23 +106,32 @@ func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 }
 
 // GetAllUsers is a server-streaming RPC to get all users
-func (server *UserServer) GetAllUsers(
-	req *pb.AllUsersRequest,
-	stream pb.UserService_GetAllUsersServer,
-) error {
-	res, err := server.Store.GetAllUsers(stream.Context())
-
-	for resUser := range res {
-		response := &pb.AllUsersResponse{User: resUser}
-		err := stream.Send(response)
+func (server *UserServer) GetAllUsers(req *pb.AllUsersRequest, stream pb.UserService_GetAllUsersServer) error {
+	req.Request = "Get all users"
+	if ok := server.Cash.CheckCash(req.Request); !ok {
+		log.Println("CheckCash() returns false")
+		res, err := server.Store.GetAllUsers(stream.Context())
 		if err != nil {
+			log.Printf("error on server.Store.GetAllUsers() %v", err)
 			return err
 		}
-		
+		err = server.Cash.CreateCash(res, req.Request)
+		if err != nil {
+			log.Printf("error on CreateCash: %v", err)
+			return err
+		}
+		log.Println("Create cash success")
 	}
-
+	res, err := server.Cash.GetCash(req.Request)
 	if err != nil {
-		return status.Errorf(codes.Internal, "unexpected error: %v", err)
+		return status.Errorf(codes.Internal, "error on GetCash(): %v", err)
+	}
+	log.Println("Get cash success")
+	for _, v := range res {
+		err := stream.Send(&v)
+		if err != nil {
+			return nil
+		}
 	}
 
 	return nil
