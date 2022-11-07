@@ -20,14 +20,16 @@ import (
 type UserServer struct {
 	Store db.UserStore
 	Cash  cash.CashStore
+	Queue *logs.KafkaWriter
 	pb.UnimplementedUserServiceServer
 }
 
 // NewUserServer returns a new UserServer
-func NewUserServer(store db.UserStore, cash cash.CashStore) *UserServer {
+func NewUserServer(store db.UserStore, cash cash.CashStore, queue *logs.KafkaWriter) *UserServer {
 	return &UserServer{
 		Store: store,
 		Cash:  cash,
+		Queue: queue,
 	}
 }
 
@@ -41,14 +43,14 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 		_, err := uuid.Parse(user.Id)
 		if err != nil {
 			msg := status.Errorf(codes.InvalidArgument, "user ID is not a valid UUID: %v", err)
-			logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+			server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
 			return nil, msg
 		}
 	} else {
 		id, err := uuid.NewRandom()
 		if err != nil {
 			msg := status.Errorf(codes.Internal, "cannot generate a new user ID: %v", err)
-			logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+			server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
 			return nil, msg
 		}
 		user.Id = id.String()
@@ -56,14 +58,14 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 	if ctx.Err() == context.Canceled {
 		log.Println("request is canceled")
 		msg := status.Error(codes.Canceled, "request is canceled")
-		logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+		server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
 		return nil, msg
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
 		log.Println("deadline is exceeded")
 		msg := status.Error(codes.DeadlineExceeded, "deadline is exceeded")
-		logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+		server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
 		return nil, msg
 	}
 	// save user to store
@@ -74,12 +76,12 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 			code = codes.AlreadyExists
 		}
 		msg := status.Errorf(code, "cannot save user to the store: %v", err)
-		logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+		server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
 		return nil, msg
 	}
 	msg := fmt.Sprintf("user with id %v created successfully", user.Id)
 	log.Println(msg)
-	logs.LogMessageCreate(ctx, "INFO", msg)
+	server.Queue.LogsKafkaProduce(ctx, "INFO", msg)
 
 	res := &pb.CreateUserResponse{
 		Id: user.Id,

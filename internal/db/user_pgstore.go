@@ -33,7 +33,9 @@ type PgUser struct {
 // ErrAlreadyExists is returned when a record with the same ID already exists in the store
 var ErrAlreadyExists = errors.New("record already exists")
 
-func NewUserPostgresStore(dns string) (*UserPostgresStore, error) {
+func NewUserPostgresStore(user string, pass string, host string, port string) (*UserPostgresStore, error) {
+	dns := fmt.Sprintf("postgres://%s:%s@%s:%s/postgres", user, pass, host, port)
+	//"postgres://postgres:example@localhost:5432/postgres"
 	db, err := sql.Open("pgx", dns)
 	if err != nil {
 		log.Printf("error on sql open: %s", err)

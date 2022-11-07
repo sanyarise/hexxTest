@@ -37,9 +37,10 @@ func NewRedisClient(host, port string, ttl time.Duration) (*RedisClient, error) 
 	if err != nil {
 		return nil, fmt.Errorf("try to ping to redis: %w", err)
 	}
+	cashTTL := ttl * time.Minute
 	c := &RedisClient{
 		Client: client,
-		TTL:    ttl,
+		TTL: cashTTL,
 	}
 	return c, nil
 }
@@ -77,9 +78,7 @@ func (c *RedisClient) CreateCash(ctx context.Context, res chan *pb.User, key str
 		return fmt.Errorf("marshal unknown user: %w", err)
 	}
 
-	ttl := 1 * time.Minute
-
-	err = c.Set(ctx, key, data, ttl).Err()
+	err = c.Set(ctx, key, data, c.TTL).Err()
 	if err != nil {
 		return fmt.Errorf("redis: set key %q: %w", key, err)
 	}
