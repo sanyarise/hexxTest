@@ -1,31 +1,37 @@
-package service
+package server
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/sanyarise/hezzl/internal/cash"
+	"github.com/sanyarise/hezzl/internal/db"
+	"github.com/sanyarise/hezzl/internal/logs"
 	"github.com/sanyarise/hezzl/internal/pb"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // UserServer is the server that provides user services
 type UserServer struct {
-	Store UserStore
-	Cash *RedisClient
+	Store db.UserStore
+	Cash  cash.CashStore
 	pb.UnimplementedUserServiceServer
 }
 
 // NewUserServer returns a new UserServer
-func NewUserServer(store UserStore, cash *RedisClient) *UserServer {
+func NewUserServer(store db.UserStore, cash cash.CashStore) *UserServer {
 	return &UserServer{
 		Store: store,
-		Cash: cash,
+		Cash:  cash,
 	}
 }
 
+// CreateUser create new user and save in store
 func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
 	user := req.GetUser()
 	log.Printf("receive a create user request with id: %s", user.Id)
@@ -34,34 +40,46 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 		// check if it's a valid UUID
 		_, err := uuid.Parse(user.Id)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "user ID is not a valid UUID: %v", err)
+			msg := status.Errorf(codes.InvalidArgument, "user ID is not a valid UUID: %v", err)
+			logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+			return nil, msg
 		}
 	} else {
 		id, err := uuid.NewRandom()
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "cannot generate a new user ID: %v", err)
+			msg := status.Errorf(codes.Internal, "cannot generate a new user ID: %v", err)
+			logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+			return nil, msg
 		}
 		user.Id = id.String()
 	}
 	if ctx.Err() == context.Canceled {
-		log.Print("request is canceled")
-		return nil, status.Error(codes.Canceled, "deadline is canceled")
+		log.Println("request is canceled")
+		msg := status.Error(codes.Canceled, "request is canceled")
+		logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+		return nil, msg
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
-		log.Print("deadline is exceeded")
-		return nil, status.Error(codes.DeadlineExceeded, "deadline is exceeded")
+		log.Println("deadline is exceeded")
+		msg := status.Error(codes.DeadlineExceeded, "deadline is exceeded")
+		logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+		return nil, msg
 	}
 	// save user to store
 	err := server.Store.SaveUser(ctx, user)
 	if err != nil {
 		code := codes.Internal
-		if errors.Is(err, ErrAlreadyExists) {
+		if errors.Is(err, db.ErrAlreadyExists) {
 			code = codes.AlreadyExists
 		}
-		return nil, status.Errorf(code, "cannot save user to the store: %v", err)
+		msg := status.Errorf(code, "cannot save user to the store: %v", err)
+		logs.LogMessageCreate(ctx, "ERROR", msg.Error())
+		return nil, msg
 	}
-	log.Printf("saved user with id: %s", user.Id)
+	msg := fmt.Sprintf("user with id %v created successfully", user.Id)
+	log.Println(msg)
+	logs.LogMessageCreate(ctx, "INFO", msg)
 
 	res := &pb.CreateUserResponse{
 		Id: user.Id,
@@ -69,6 +87,7 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 	return res, nil
 }
 
+// DeleteUser delete user by id
 func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
 	id := req.Id
 	log.Printf("receive a delete user request with id: %s", id)
@@ -83,12 +102,12 @@ func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 	}
 
 	if ctx.Err() == context.Canceled {
-		log.Print("request is canceled")
-		return nil, status.Error(codes.Canceled, "deadline is canceled")
+		log.Println("request is canceled")
+		return nil, status.Error(codes.Canceled, "context is canceled")
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
-		log.Print("deadline is exceeded")
+		log.Println("deadline is exceeded")
 		return nil, status.Error(codes.DeadlineExceeded, "deadline is exceeded")
 	}
 	// delete user from store
@@ -97,10 +116,10 @@ func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 		code := codes.Internal
 		return nil, status.Errorf(code, "cannot delete user from the store: %v", err)
 	}
-	log.Printf("deleted user with id: %s success", id)
+	log.Printf("deleted user with id: %s success\n", id)
 
 	res := &pb.DeleteUserResponse{
-		Status: "Success",
+		Status: fmt.Sprintf("Delete user with id %s success\n", id),
 	}
 	return res, nil
 }
@@ -115,7 +134,8 @@ func (server *UserServer) GetAllUsers(req *pb.AllUsersRequest, stream pb.UserSer
 			log.Printf("error on server.Store.GetAllUsers() %v", err)
 			return err
 		}
-		err = server.Cash.CreateCash(res, req.Request)
+		ctx := context.Background()
+		err = server.Cash.CreateCash(ctx, res, req.Request)
 		if err != nil {
 			log.Printf("error on CreateCash: %v", err)
 			return err
@@ -128,11 +148,10 @@ func (server *UserServer) GetAllUsers(req *pb.AllUsersRequest, stream pb.UserSer
 	}
 	log.Println("Get cash success")
 	for _, v := range res {
-		err := stream.Send(&v)
+		err := stream.Send(&pb.AllUsersResponse{User: v})
 		if err != nil {
 			return nil
 		}
 	}
-
 	return nil
 }

@@ -1,4 +1,4 @@
-package service
+package db
 
 import (
 	"context"
@@ -12,15 +12,15 @@ import (
 	"github.com/sanyarise/hezzl/internal/pb"
 )
 
-// ErrAlreadyExists is returned when a record with the same ID already exists in the store
-var ErrAlreadyExists = errors.New("record already exists")
-
 // UserStore is an interface to store user
 type UserStore interface {
-	// Save saves user to the store
 	SaveUser(ctx context.Context, user *pb.User) error
 	DeleteUser(ctx context.Context, id string) error
 	GetAllUsers(ctx context.Context) (chan *pb.User, error)
+}
+
+type UserPostgresStore struct {
+	db *sql.DB
 }
 
 type PgUser struct {
@@ -30,9 +30,8 @@ type PgUser struct {
 	Name      string
 }
 
-type UserPostgresStore struct {
-	db *sql.DB
-}
+// ErrAlreadyExists is returned when a record with the same ID already exists in the store
+var ErrAlreadyExists = errors.New("record already exists")
 
 func NewUserPostgresStore(dns string) (*UserPostgresStore, error) {
 	db, err := sql.Open("pgx", dns)
@@ -46,20 +45,7 @@ func NewUserPostgresStore(dns string) (*UserPostgresStore, error) {
 		db.Close()
 		return nil, err
 	}
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS users(
-		id varchar UNIQUE NOT NULL,
-		created_at timestamptz NOT NULL,
-		deleted_at timestamptz,
-		name varchar NOT NULL,
 
-		CONSTRAINT users_pk PRIMARY KEY (id)
-	)`)
-	if err != nil {
-		log.Printf("error on create table: %s", err)
-		db.Close()
-		return nil, err
-	}
 	us := &UserPostgresStore{
 		db: db,
 	}
@@ -137,7 +123,7 @@ func (ups *UserPostgresStore) GetAllUsers(ctx context.Context) (chan *pb.User, e
 				log.Printf("error on rows.Scan(): %v", err)
 				return
 			}
-		
+
 			chout <- &pb.User{
 				Id:   pguser.Id,
 				Name: pguser.Name,
