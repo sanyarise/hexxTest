@@ -54,6 +54,10 @@ func NewUserPostgresStore(user string, pass string, host string, port string) (*
 	return us, nil
 }
 
+func (ups *UserPostgresStore) Close() {
+	ups.db.Close()
+}
+
 // Save saves user to the store
 func (ups *UserPostgresStore) SaveUser(ctx context.Context, user *pb.User) error {
 	pgu := &PgUser{

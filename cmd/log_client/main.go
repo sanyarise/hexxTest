@@ -5,11 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
+	"github.com/caarlos0/env"
 	"github.com/segmentio/kafka-go"
 	"github.com/uptrace/go-clickhouse/ch"
 	"github.com/uptrace/go-clickhouse/chdebug"
 )
+
+type Config struct {
+	KafkaTopic string `env:"KAFKA_TOPIC" envDefault:"topic1"`
+	KafkaHost  string `env:"KAFKA_HOST" envDefault:"localhost"`
+	KafkaPort  string `env:"KAFKA_PORT" envDefault:"9092"`
+	KafkaGroup string `env:"KAFKA_GROUP" envDefault:"my-group"`
+	DBDsn      string `env:"DB_DSN" envDefault:"clickhouse://0.0.0.0:9000/default?sslmode=disable"`
+}
 
 type Log struct {
 	Time    string `json:"time"`
@@ -17,9 +30,35 @@ type Log struct {
 	Message string `json:"message"`
 }
 
+var (
+	config Config
+	once   sync.Once
+)
+
 func main() {
+	go run()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	<-ctx.Done()
+	
+	log.Println("closing...")
+	cancel()
+}
+
+func run() error {
+	config := newConfig()
+
+	broker1Address := fmt.Sprintf("%s:%s", config.KafkaHost, config.KafkaPort)
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{broker1Address},
+		Topic:   config.KafkaTopic,
+		GroupID: config.KafkaGroup,
+	})
+
 	out := make(chan []byte, 100)
-	go Reciever(out)
+
+	go kafkaReciever(reader, out)
+
 	var jsonStr []byte
 	for {
 		jsonStr = <-out
@@ -28,44 +67,54 @@ func main() {
 		if err != nil {
 			log.Printf("error on json.Unmarshal: %v", err)
 		}
-		clickHouseWriter(l)
+		clickHouseLogWriter(config.DBDsn, l)
 	}
 }
 
-func Reciever(out chan []byte) {
-	const (
-		topic          = "topic1"
-		broker1Address = "localhost:9092"
-	)
-	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{broker1Address},
-		Topic:   topic,
-		GroupID: "my-group",
+// newConfig returns new configuration
+func newConfig() *Config {
+	once.Do(func() {
+
+		if err := env.Parse(&config); err != nil {
+			log.Fatalf("Can't load configuration: %s", err)
+		}
+		configBytes, err := json.MarshalIndent(config, "", "  ")
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		log.Printf("Load config successful %v", string(configBytes))
 	})
+	return &config
+}
+
+// kafkaReciever reads log messages from kafka
+func kafkaReciever(r *kafka.Reader, out chan []byte) {
+	defer r.Close()
 	for {
-		// the `ReadMessage` method blocks until we receive the next event
 		msg, err := r.ReadMessage(context.Background())
 		if err != nil {
 			fmt.Printf("could not read message " + err.Error())
 		}
-		// after receiving the message, log its value
 		fmt.Println("received: ", string(msg.Value))
 		out <- msg.Value
 	}
 }
 
-func clickHouseWriter(l *Log) {
-	fmt.Println("enter in clH")
+// ckickHouseLogWriter writes log messages to clickhouse
+func clickHouseLogWriter(dsn string, l *Log) {
+	fmt.Println("enter in clickHouseWriter")
 
 	db := ch.Connect(
 		// clickhouse://<user>:<password>@<host>:<port>/<database>?sslmode=disable
-		ch.WithDSN("clickhouse://0.0.0.0:9000/default?sslmode=disable"),
+		ch.WithDSN(dsn),
 	)
 
 	db.AddQueryHook(chdebug.NewQueryHook(
 		chdebug.WithVerbose(true),
 		chdebug.FromEnv("CHDEBUG"),
 	))
+	defer db.Close()
 
 	span := &Log{
 		Time:    l.Time,
@@ -73,10 +122,10 @@ func clickHouseWriter(l *Log) {
 		Message: l.Message,
 	}
 
-	res2, err := db.NewInsert().Model(span).Exec(context.Background())
+	res, err := db.NewInsert().Model(span).Exec(context.Background())
 	if err != nil {
 		log.Printf("error on insert log in clickhouse: %v", err)
 	} else {
-		log.Printf("insert into clickhouse success: %v", res2)
+		log.Printf("insert into clickhouse success: %v", res)
 	}
 }

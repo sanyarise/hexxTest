@@ -24,6 +24,10 @@ func NewKafkaWriter(topic string, host string, port string) *KafkaWriter {
 	return &KafkaWriter{Writer: writer}
 }
 
+func (kw *KafkaWriter) Close() {
+	kw.Writer.Close()
+}
+
 func (kw *KafkaWriter) LogsKafkaProduce(ctx context.Context, level string, msg string) error {
 	message := &model.Log{
 		Time:    time.Now().Format(time.RFC3339),
