@@ -2,33 +2,21 @@ version: '3.1'
 
 services:
   
-  relational-db:
-    image: postgres
+  postgres:
+    image: postgres:14.5
     restart: always
     volumes:
       - ./volumes/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       POSTGRES_PASSWORD: example
     ports:
-      - "5432:5432"
+      - 5432:5432
 
   redis:
-    image: redis
+    image: redis:6.2.7
     restart: always
     ports:
-      - "6379:6379"
-
-  clickhouse:
-    image: yandex/clickhouse-server:21.3.20.1
-    restart: always
-    volumes:
-      - ./volumes/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - 9000:9000
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
+      - 6379:6379
 
   zookeeper:
     image: docker.io/bitnami/zookeeper:3.8
@@ -39,11 +27,12 @@ services:
       - "zookeeper_data:/bitnami"
     environment:
       - ALLOW_ANONYMOUS_LOGIN=yes
+
   kafka:
     image: docker.io/bitnami/kafka:3.3
     restart: always
     ports:
-      - "9092:9092"
+      - 9092:9092
     volumes:
       - "kafka_data:/bitnami"
     environment:
@@ -56,6 +45,50 @@ services:
       - KAFKA_INTER_BROKER_LISTENER_NAME=OUTSIDE
     depends_on:
       - zookeeper
+
+  clickhouse:
+    image: yandex/clickhouse-server:21.3.20.1
+    restart: always
+    volumes:
+      - ./volumes/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - 9000:9000
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    depends_on:
+      - kafka
+
+  user_grpc_server:
+    image: user_grpc_server:latest
+    build:
+      dockerfile: Dockerfile.server
+      context: .
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    restart: always
+    ports:
+      - 8080:8080
+
+  user_logs_client:
+    image: user_logs_client:latest
+    build: 
+      dockerfile: Dockerfile.log_client
+      context: .
+    depends_on:
+      - kafka
+      - clickhouse
+    restart: always
+
+  user_grpc_client:
+    image: user_grpc_client:latest
+    build: 
+      dockerfile: Dockerfile.client
+      context: .
+
 
 volumes:
   zookeeper_data:
