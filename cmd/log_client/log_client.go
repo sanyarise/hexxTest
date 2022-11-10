@@ -18,10 +18,10 @@ import (
 
 type Config struct {
 	KafkaTopic string `env:"KAFKA_TOPIC" envDefault:"topic1"`
-	KafkaHost  string `env:"KAFKA_HOST" envDefault:"localhost"`
-	KafkaPort  string `env:"KAFKA_PORT" envDefault:"9092"`
+	KafkaHost  string `env:"KAFKA_HOST" envDefault:"kafka"`
+	KafkaPort  string `env:"KAFKA_PORT" envDefault:"9192"`
 	KafkaGroup string `env:"KAFKA_GROUP" envDefault:"my-group"`
-	DBDsn      string `env:"DB_DSN" envDefault:"clickhouse://0.0.0.0:9000/default?sslmode=disable"`
+	DBDsn      string `env:"DB_DSN" envDefault:"clickhouse://clickhouse:9000/default?sslmode=disable"`
 }
 
 type Log struct {

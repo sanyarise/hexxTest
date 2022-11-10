@@ -29,7 +29,7 @@ import (
 )
 
 type Config struct {
-	Host  string `env:"SRV_HOST" envDefault:"localhost"`
+	Host  string `env:"SRV_HOST" envDefault:"0.0.0.0"`
 	Port  string `env:"SRV_PORT" envDefault:"8080"`
 	DBDsn string `env:"DB_DSN" envDefault:"clickhouse://0.0.0.0:9000/default?sslmode=disable"`
 }
@@ -240,7 +240,7 @@ func run(host string, port string, dsn string) error {
 		case s == "ch":
 			clickhouseFunc(dsn)
 		case s == "exit":
-			return nil
+			os.Exit(0)
 		default:
 			fmt.Println("Unknown type of operation")
 		}

@@ -1,9 +1,17 @@
 version: '3.1'
 
 services:
+  waitfordb:
+    image: dadarek/wait-for-dependencies
+    container_name: wait
+    depends_on:
+      - postgres 
+    command: postgres:5432
   
   postgres:
     image: postgres:14.5
+    container_name: postgres
+    hostname: postgres
     restart: always
     volumes:
       - ./volumes/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -14,12 +22,16 @@ services:
 
   redis:
     image: redis:6.2.7
+    container_name: redis
+    hostname: redis
     restart: always
     ports:
       - 6379:6379
 
   zookeeper:
     image: docker.io/bitnami/zookeeper:3.8
+    container_name: zookeeper
+    hostname: zookeeper
     restart: always
     ports:
       - "2181:2181"
@@ -30,24 +42,30 @@ services:
 
   kafka:
     image: docker.io/bitnami/kafka:3.3
+    container_name: kafka
+    hostname: kafka
     restart: always
     ports:
       - 9092:9092
+      - 9192:9192
     volumes:
       - "kafka_data:/bitnami"
     environment:
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_ADVERTISED_HOST_NAME=kafka
       - KAFKA_LISTENERS=OUTSIDE://:9092,INSIDE://:9192
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=OUTSIDE:PLAINTEXT,INSIDE:PLAINTEXT
       - KAFKA_ADVERTISED_LISTENERS=OUTSIDE://localhost:9092,INSIDE://kafka:9192
-      - KAFKA_INTER_BROKER_LISTENER_NAME=OUTSIDE
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE
     depends_on:
       - zookeeper
 
   clickhouse:
     image: yandex/clickhouse-server:21.3.20.1
+    container_name: clickhouse
+    hostname: clickhouse
     restart: always
     volumes:
       - ./volumes/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -60,35 +78,31 @@ services:
     depends_on:
       - kafka
 
-  user_grpc_server:
+  server:
     image: user_grpc_server:latest
+    container_name: server
+    hostname: server
     build:
       dockerfile: Dockerfile.server
       context: .
     depends_on:
-      - postgres
+      - waitfordb
       - redis
       - kafka
     restart: always
     ports:
       - 8080:8080
+    
 
   user_logs_client:
     image: user_logs_client:latest
+    container_name: logs_client
     build: 
       dockerfile: Dockerfile.log_client
       context: .
     depends_on:
-      - kafka
-      - clickhouse
+      - server
     restart: always
-
-  user_grpc_client:
-    image: user_grpc_client:latest
-    build: 
-      dockerfile: Dockerfile.client
-      context: .
-
 
 volumes:
   zookeeper_data:
