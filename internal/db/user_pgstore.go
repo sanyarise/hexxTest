@@ -10,14 +10,10 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/sanyarise/hezzl/internal/pb"
+	"github.com/sanyarise/hezzl/internal/usecases/userrepo"
 )
 
-// UserStore is an interface to store user
-type UserStore interface {
-	SaveUser(ctx context.Context, user *pb.User) error
-	DeleteUser(ctx context.Context, id string) error
-	GetAllUsers(ctx context.Context) (chan *pb.User, error)
-}
+var _ userrepo.UserStore = &UserPostgresStore{}
 
 type UserPostgresStore struct {
 	db *sql.DB

@@ -16,6 +16,7 @@ import (
 	"github.com/sanyarise/hezzl/internal/logs"
 	"github.com/sanyarise/hezzl/internal/pb"
 	"github.com/sanyarise/hezzl/internal/server"
+	"github.com/sanyarise/hezzl/internal/usecases/userrepo"
 
 	"google.golang.org/grpc"
 )
@@ -29,10 +30,11 @@ func main() {
 func run() error {
 	config := config.NewConfig()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	userStore, _ := db.NewUserPostgresStore(config.PGUser, config.PGPass, config.PGHost, config.PGPort)
+	pgStore, _ := db.NewUserPostgresStore(config.PGUser, config.PGPass, config.PGHost, config.PGPort)
+	userStore := userrepo.NewUserStorage(pgStore)
 	userCash, _ := cash.NewRedisClient(config.RedisHost, config.RedisPort, time.Duration(config.CashTTL))
 	userQueue := logs.NewKafkaWriter(config.KafkaTopic, config.KafkaHost, config.KafkaPort)
-	userServer := server.NewUserServer(userStore, userCash, userQueue)
+	userServer := server.NewUserServer(*userStore, userCash, userQueue)
 	grpcServer := grpc.NewServer()
 	pb.RegisterUserServiceServer(grpcServer, userServer)
 	log.Printf("start server on port :%s", config.Port)
@@ -42,7 +44,7 @@ func run() error {
 		log.Fatal("cannot start listener: ", err)
 	}
 	go serveGRPC(grpcServer, listener)
-	
+
 	<-ctx.Done()
 
 	log.Println("closing...")
@@ -50,7 +52,7 @@ func run() error {
 	grpcServer.GracefulStop()
 	log.Println("grpc server stopped success")
 	cancel()
-	userStore.Close()
+	pgStore.Close()
 	log.Println("database stopped success")
 	userCash.Close()
 	log.Println("cash client stopped success")

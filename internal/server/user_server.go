@@ -11,6 +11,7 @@ import (
 	"github.com/sanyarise/hezzl/internal/db"
 	"github.com/sanyarise/hezzl/internal/logs"
 	"github.com/sanyarise/hezzl/internal/pb"
+	"github.com/sanyarise/hezzl/internal/usecases/userrepo"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,14 +19,14 @@ import (
 
 // UserServer is the server that provides user services
 type UserServer struct {
-	Store db.UserStore
+	Store userrepo.UserStore
 	Cash  cash.CashStore
 	Queue *logs.KafkaWriter
 	pb.UnimplementedUserServiceServer
 }
 
 // NewUserServer returns a new UserServer
-func NewUserServer(store db.UserStore, cash cash.CashStore, queue *logs.KafkaWriter) *UserServer {
+func NewUserServer(store userrepo.UserStore, cash cash.CashStore, queue *logs.KafkaWriter) *UserServer {
 	return &UserServer{
 		Store: store,
 		Cash:  cash,
