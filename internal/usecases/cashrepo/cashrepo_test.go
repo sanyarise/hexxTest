@@ -74,5 +74,4 @@ func TestGetCash(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to get cash: expected err = nil, got %s", err)
 	}
-
 }

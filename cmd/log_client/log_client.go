@@ -74,7 +74,6 @@ func run() error {
 // newConfig returns new configuration
 func newConfig() *Config {
 	once.Do(func() {
-
 		if err := env.Parse(&config); err != nil {
 			log.Fatalf("Can't load configuration: %s", err)
 		}

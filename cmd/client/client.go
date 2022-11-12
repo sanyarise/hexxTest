@@ -48,7 +48,6 @@ var (
 // newConfig returns new configuration
 func newConfig() *Config {
 	once.Do(func() {
-
 		if err := env.Parse(&config); err != nil {
 			log.Fatalf("Can't load configuration: %s", err)
 		}
@@ -168,7 +167,6 @@ func clickhouseFunc(dsn string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-
 }
 
 func NewUser() *pb.User {
