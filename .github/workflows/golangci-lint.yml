@@ -30,7 +30,7 @@ jobs:
             dep ensure
         fi
     - name: Build
-      run: go build -v cmd/callback/*.go && go build -v cmd/tester/*.go
+      run: go build -v cmd/server/*.go
 
     - name: Test
       run: go test -v ./...
