@@ -1,4 +1,4 @@
-package logs
+package queue
 
 import (
 	"context"
@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/sanyarise/hezzl/internal/model"
+	"github.com/sanyarise/hezzl/internal/usecases/qrepo"
 	"github.com/segmentio/kafka-go"
 )
+
+var _ qrepo.Queue = &KafkaWriter{}
 
 type KafkaWriter struct {
 	Writer *kafka.Writer
@@ -31,7 +34,7 @@ func (kw *KafkaWriter) Close() {
 	kw.Writer.Close()
 }
 
-func (kw *KafkaWriter) LogsKafkaProduce(ctx context.Context, level string, msg string) error {
+func (kw *KafkaWriter) Enqueue(ctx context.Context, level string, msg string) error {
 	var once sync.Once
 	once.Do(func() {
 		KafkaCreateTopic()

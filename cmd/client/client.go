@@ -81,9 +81,9 @@ func createUser(ctx context.Context, userClient pb.UserServiceClient) {
 			st, ok := status.FromError(err)
 			if ok && st.Code() == codes.AlreadyExists {
 				// not a big deal
-				log.Print("user already exists")
+				log.Println("user already exists")
 			} else {
-				log.Fatal("cannot create user: ", err)
+				log.Println("cannot create user: ", err)
 			}
 			return
 		}
@@ -222,7 +222,7 @@ func run(host string, port string, dsn string) error {
 	log.Printf("dial server %s", serverAddress)
 
 	userClient := pb.NewUserServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	for {

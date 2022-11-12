@@ -9,14 +9,10 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/sanyarise/hezzl/internal/pb"
+	"github.com/sanyarise/hezzl/internal/usecases/cashrepo"
 )
 
-type CashStore interface {
-	CheckCash(key string) bool
-	CreateCash(ctx context.Context, res chan *pb.User, key string) error
-	GetCash(key string) ([]*pb.User, error)
-}
-
+var _ cashrepo.Cash = &RedisClient{}
 type RedisClient struct {
 	*redis.Client
 	TTL time.Duration

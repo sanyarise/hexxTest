@@ -2,15 +2,13 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 
 	"github.com/google/uuid"
-	"github.com/sanyarise/hezzl/internal/cash"
-	"github.com/sanyarise/hezzl/internal/db"
-	"github.com/sanyarise/hezzl/internal/logs"
 	"github.com/sanyarise/hezzl/internal/pb"
+	"github.com/sanyarise/hezzl/internal/usecases/cashrepo"
+	"github.com/sanyarise/hezzl/internal/usecases/qrepo"
 	"github.com/sanyarise/hezzl/internal/usecases/userrepo"
 
 	"google.golang.org/grpc/codes"
@@ -19,18 +17,18 @@ import (
 
 // UserServer is the server that provides user services
 type UserServer struct {
-	Store userrepo.UserStore
-	Cash  cash.CashStore
-	Queue *logs.KafkaWriter
+	store userrepo.UserStore
+	cash  cashrepo.Cash
+	queue qrepo.Queue
 	pb.UnimplementedUserServiceServer
 }
 
 // NewUserServer returns a new UserServer
-func NewUserServer(store userrepo.UserStore, cash cash.CashStore, queue *logs.KafkaWriter) *UserServer {
+func NewUserServer(store userrepo.UserStore, cash cashrepo.Cash, queue qrepo.Queue) *UserServer {
 	return &UserServer{
-		Store: store,
-		Cash:  cash,
-		Queue: queue,
+		store: store,
+		cash:  cash,
+		queue: queue,
 	}
 }
 
@@ -44,14 +42,14 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 		_, err := uuid.Parse(user.Id)
 		if err != nil {
 			msg := status.Errorf(codes.InvalidArgument, "user ID is not a valid UUID: %v", err)
-			server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
+			server.queue.Enqueue(ctx, "ERROR", msg.Error())
 			return nil, msg
 		}
 	} else {
 		id, err := uuid.NewRandom()
 		if err != nil {
 			msg := status.Errorf(codes.Internal, "cannot generate a new user ID: %v", err)
-			server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
+			server.queue.Enqueue(ctx, "ERROR", msg.Error())
 			return nil, msg
 		}
 		user.Id = id.String()
@@ -59,30 +57,27 @@ func (server *UserServer) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 	if ctx.Err() == context.Canceled {
 		log.Println("request is canceled")
 		msg := status.Error(codes.Canceled, "request is canceled")
-		server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
+		server.queue.Enqueue(ctx, "ERROR", msg.Error())
 		return nil, msg
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
 		log.Println("deadline is exceeded")
 		msg := status.Error(codes.DeadlineExceeded, "deadline is exceeded")
-		server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
+		server.queue.Enqueue(ctx, "ERROR", msg.Error())
 		return nil, msg
 	}
 	// save user to store
-	err := server.Store.SaveUser(ctx, user)
+	err := server.store.SaveUser(ctx, user)
 	if err != nil {
 		code := codes.Internal
-		if errors.Is(err, db.ErrAlreadyExists) {
-			code = codes.AlreadyExists
-		}
 		msg := status.Errorf(code, "cannot save user to the store: %v", err)
-		server.Queue.LogsKafkaProduce(ctx, "ERROR", msg.Error())
+		server.queue.Enqueue(ctx, "ERROR", msg.Error())
 		return nil, msg
 	}
 	msg := fmt.Sprintf("user with id %v created successfully", user.Id)
 	log.Println(msg)
-	server.Queue.LogsKafkaProduce(ctx, "INFO", msg)
+	server.queue.Enqueue(ctx, "INFO", msg)
 
 	res := &pb.CreateUserResponse{
 		Id: user.Id,
@@ -96,7 +91,7 @@ func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 	log.Printf("receive a delete user request with id: %s", id)
 
 	if len(id) > 0 {
-		// check if it's a valid UUID
+		// Check if it's a valid UUID
 		_, err := uuid.Parse(id)
 
 		if err != nil {
@@ -113,8 +108,8 @@ func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 		log.Println("deadline is exceeded")
 		return nil, status.Error(codes.DeadlineExceeded, "deadline is exceeded")
 	}
-	// delete user from store
-	err := server.Store.DeleteUser(ctx, id)
+	// Delete user from store
+	err := server.store.DeleteUser(ctx, id)
 	if err != nil {
 		code := codes.Internal
 		return nil, status.Errorf(code, "cannot delete user from the store: %v", err)
@@ -124,28 +119,29 @@ func (server *UserServer) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 	res := &pb.DeleteUserResponse{
 		Status: fmt.Sprintf("Delete user with id %s success\n", id),
 	}
+	// TODO: delete cash when user delete
 	return res, nil
 }
 
 // GetAllUsers is a server-streaming RPC to get all users
 func (server *UserServer) GetAllUsers(req *pb.AllUsersRequest, stream pb.UserService_GetAllUsersServer) error {
 	req.Request = "Get all users"
-	if ok := server.Cash.CheckCash(req.Request); !ok {
+	if ok := server.cash.CheckCash(req.Request); !ok {
 		log.Println("CheckCash() returns false")
-		res, err := server.Store.GetAllUsers(stream.Context())
+		res, err := server.store.GetAllUsers(stream.Context())
 		if err != nil {
 			log.Printf("error on server.Store.GetAllUsers() %v", err)
 			return err
 		}
 		ctx := context.Background()
-		err = server.Cash.CreateCash(ctx, res, req.Request)
+		err = server.cash.CreateCash(ctx, res, req.Request)
 		if err != nil {
 			log.Printf("error on CreateCash: %v", err)
 			return err
 		}
 		log.Println("Create cash success")
 	}
-	res, err := server.Cash.GetCash(req.Request)
+	res, err := server.cash.GetCash(req.Request)
 	if err != nil {
 		return status.Errorf(codes.Internal, "error on GetCash(): %v", err)
 	}
