@@ -28,7 +28,7 @@ func (cmc *CustomMockCash) CreateCash(ctx context.Context, res chan *pb.User, ke
 }
 
 func (cmc *CustomMockCash) GetCash(key string) ([]*pb.User, error) {
-	out := make([]*pb.User,0, 1)
+	out := make([]*pb.User, 0, 1)
 	out = append(out, &pb.User{Id: "TestID", Name: "TestName"})
 	return out, nil
 }

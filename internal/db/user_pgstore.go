@@ -26,7 +26,6 @@ type PgUser struct {
 	Name      string
 }
 
-
 func NewUserPostgresStore(user string, pass string, host string, port string) (*UserPostgresStore, error) {
 	dns := fmt.Sprintf("postgres://%s:%s@%s:%s/postgres", user, pass, host, port)
 	//"postgres://postgres:example@localhost:5432/postgres"

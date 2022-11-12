@@ -30,6 +30,6 @@ func (cms *CustomMockStore) DeleteUser(ctx context.Context, id string) error {
 func (cms *CustomMockStore) GetAllUsers(ctx context.Context) (chan *pb.User, error) {
 	out := make(chan *pb.User, 100)
 	user := pb.User{Id: "TestId", Name: "TestName"}
-	out<-&user
+	out <- &user
 	return out, nil
 }

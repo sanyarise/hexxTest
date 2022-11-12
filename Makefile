@@ -21,3 +21,6 @@ slog:
 
 clog:
 	docker logs logs_client
+
+test:
+	go test ./... -v

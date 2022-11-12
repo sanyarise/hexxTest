@@ -40,7 +40,7 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	<-ctx.Done()
-	
+
 	log.Println("closing...")
 	cancel()
 }

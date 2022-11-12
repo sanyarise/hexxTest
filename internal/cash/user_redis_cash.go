@@ -13,6 +13,7 @@ import (
 )
 
 var _ cashrepo.Cash = &RedisClient{}
+
 type RedisClient struct {
 	*redis.Client
 	TTL time.Duration
@@ -36,7 +37,7 @@ func NewRedisClient(host, port string, ttl time.Duration) (*RedisClient, error) 
 	cashTTL := ttl * time.Minute
 	c := &RedisClient{
 		Client: client,
-		TTL: cashTTL,
+		TTL:    cashTTL,
 	}
 	return c, nil
 }
