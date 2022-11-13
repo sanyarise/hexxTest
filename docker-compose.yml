@@ -41,7 +41,7 @@ services:
     restart: always
     volumes:
       - ./volumes/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - /opt/databases/user_server_clickhouse:/var/lib/clickhouse/data
+      - /opt/databases/user_server_clickhouse:/var/lib/clickhouse/
     ports:
       - 9000:9000
     ulimits:
