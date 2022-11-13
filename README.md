@@ -40,4 +40,4 @@
 
 ## A picture is worth a thousand words
 
-<img src="./images/image2.png">
+<img src="./images/image.png">
