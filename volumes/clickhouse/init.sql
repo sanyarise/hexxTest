@@ -1,4 +1,4 @@
-CREATE TABLE logs
+CREATE TABLE IF NOT EXISTS logs
 (
   "time" String,
   "level" String,
